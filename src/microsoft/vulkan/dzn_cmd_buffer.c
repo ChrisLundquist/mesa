@@ -931,7 +931,7 @@ dzn_cmd_buffer_collect_queries(struct dzn_cmd_buffer *cmdbuf,
     * for views other than the first one. */
    BITSET_WORD *zero =
       util_dynarray_element(&state->zero, BITSET_WORD, 0);
-   const uint32_t step = DZN_QUERY_REFS_SECTION_SIZE / sizeof(uint64_t);
+   const uint32_t step = DZN_DEVICE_REFS_SECTION_SIZE / sizeof(uint64_t);
 
    for (start = first_query, end = first_query,
         __bitset_next_range(&start, &end, zero, nbits_zero);
@@ -945,8 +945,8 @@ dzn_cmd_buffer_collect_queries(struct dzn_cmd_buffer *cmdbuf,
          ID3D12GraphicsCommandList1_CopyBufferRegion(cmdbuf->cmdlist,
                                                      qpool->resolve_buffer,
                                                      dzn_query_pool_get_result_offset(qpool, start + i),
-                                                     device->queries.refs,
-                                                     DZN_QUERY_REFS_ALL_ZEROS_OFFSET,
+                                                     device->dev_refs.buf,
+                                                     DZN_DEVICE_REFS_ALL_ZEROS_OFFSET,
                                                      qpool->query_size * sub_count);
       }
    }
@@ -987,7 +987,7 @@ dzn_cmd_buffer_collect_queries(struct dzn_cmd_buffer *cmdbuf,
            __bitset_next_range(&start, &end, bitset, nbits);
            start < nbits;
            __bitset_next_range(&start, &end, bitset, nbits)) {
-         uint32_t step = DZN_QUERY_REFS_SECTION_SIZE / sizeof(uint64_t);
+         uint32_t step = DZN_DEVICE_REFS_SECTION_SIZE / sizeof(uint64_t);
          uint32_t count = end - start;
 
          for (unsigned i = 0; i < count; i += step) {
@@ -996,8 +996,8 @@ dzn_cmd_buffer_collect_queries(struct dzn_cmd_buffer *cmdbuf,
             ID3D12GraphicsCommandList1_CopyBufferRegion(cmdbuf->cmdlist,
                                                         qpool->collect_buffer,
                                                         dzn_query_pool_get_availability_offset(qpool, start + i),
-                                                        device->queries.refs,
-                                                        DZN_QUERY_REFS_ALL_ONES_OFFSET,
+                                                        device->dev_refs.buf,
+                                                        DZN_DEVICE_REFS_ALL_ONES_OFFSET,
                                                         sizeof(uint64_t) * sub_count);
          }
 
@@ -3306,12 +3306,23 @@ dzn_cmd_buffer_update_heaps(struct dzn_cmd_buffer *cmdbuf, uint32_t bindpoint)
                uint32_t dynamic_buffer_count = pipeline->sets[s].dynamic_buffer_count;
                for (uint32_t o = 0; o < dynamic_buffer_count; o++) {
                   struct dzn_buffer_desc bdesc = set->dynamic_buffers[o];
-                  if (!bdesc.buffer)
-                     continue;
-                  bdesc.offset += desc_state->sets[s].dynamic_offsets[o];
-
                   bool primary_is_writable = bdesc.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
                   uint32_t desc_heap_offset = pipeline->sets[s].dynamic_buffer_heap_offsets[o].primary;
+
+                  if (!bdesc.buffer) {
+                     dzn_descriptor_heap_write_null_desc(device, dst_heap,
+                                                         dst_heap_offset + set_heap_offset + desc_heap_offset,
+                                                         primary_is_writable, bdesc.type);
+                     if (pipeline->sets[s].dynamic_buffer_heap_offsets[o].alt != ~0) {
+                        desc_heap_offset = pipeline->sets[s].dynamic_buffer_heap_offsets[o].alt;
+                        dzn_descriptor_heap_write_null_desc(device, dst_heap,
+                                                            dst_heap_offset + set_heap_offset + desc_heap_offset,
+                                                            false, bdesc.type);
+                     }
+                     continue;
+                  }
+                  bdesc.offset += desc_state->sets[s].dynamic_offsets[o];
+
                   dzn_descriptor_heap_write_buffer_desc(device, dst_heap,
                                                         dst_heap_offset + set_heap_offset + desc_heap_offset,
                                                         primary_is_writable, &bdesc);
@@ -3405,6 +3416,11 @@ dzn_cmd_buffer_update_heaps(struct dzn_cmd_buffer *cmdbuf, uint32_t bindpoint)
             for (uint32_t o = 0; o < dynamic_buffer_count; o++) {
                const struct dzn_buffer_desc *bdesc = &set->dynamic_buffers[o];
                volatile struct dxil_spirv_bindless_entry *map_entry = &map[pipeline->sets[s].dynamic_buffer_heap_offsets[o].primary];
+               if (!bdesc->buffer) {
+                  map_entry->buffer_idx = 0;
+                  map_entry->buffer_offset = 0;
+                  continue;
+               }
                struct dzn_buffer_desc bdesc_updated = *bdesc;
                bdesc_updated.offset += cmdbuf->state.bindpoint[bindpoint].desc_state.sets[s].dynamic_offsets[o];
                dzn_buffer_get_bindless_buffer_descriptor(device, &bdesc_updated, map_entry);
@@ -5696,25 +5712,25 @@ dzn_CmdResetQueryPool(VkCommandBuffer commandBuffer,
    if (!state)
       return;
 
-   uint32_t q_step = DZN_QUERY_REFS_SECTION_SIZE / sizeof(uint64_t);
+   uint32_t q_step = DZN_DEVICE_REFS_SECTION_SIZE / sizeof(uint64_t);
 
    for (uint32_t q = 0; q < queryCount; q += q_step) {
       uint32_t q_count = MIN2(queryCount - q, q_step);
 
       ID3D12GraphicsCommandList1_CopyBufferRegion(cmdbuf->cmdlist, qpool->collect_buffer,
                                         dzn_query_pool_get_availability_offset(qpool, firstQuery + q),
-                                        device->queries.refs,
-                                        DZN_QUERY_REFS_ALL_ZEROS_OFFSET,
+                                        device->dev_refs.buf,
+                                        DZN_DEVICE_REFS_ALL_ZEROS_OFFSET,
                                         q_count * sizeof(uint64_t));
    }
 
-   q_step = DZN_QUERY_REFS_SECTION_SIZE / qpool->query_size;
+   q_step = DZN_DEVICE_REFS_SECTION_SIZE / qpool->query_size;
 
    for (uint32_t q = 0; q < queryCount; q += q_step) {
       ID3D12GraphicsCommandList1_CopyBufferRegion(cmdbuf->cmdlist, qpool->collect_buffer,
                                         dzn_query_pool_get_result_offset(qpool, firstQuery + q),
-                                        device->queries.refs,
-                                        DZN_QUERY_REFS_ALL_ZEROS_OFFSET,
+                                        device->dev_refs.buf,
+                                        DZN_DEVICE_REFS_ALL_ZEROS_OFFSET,
                                         qpool->query_size);
    }
 

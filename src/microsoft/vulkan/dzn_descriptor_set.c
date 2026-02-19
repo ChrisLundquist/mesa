@@ -22,6 +22,7 @@
  */
 
 #include "dzn_private.h"
+#include "dzn_null_desc.h"
 
 #include "vk_alloc.h"
 #include "vk_descriptors.h"
@@ -1096,6 +1097,35 @@ dzn_descriptor_heap_write_buffer_desc(struct dzn_device *device,
    }
 }
 
+void
+dzn_descriptor_heap_write_null_desc(struct dzn_device *device,
+                                    struct dzn_descriptor_heap *heap,
+                                    uint32_t desc_offset,
+                                    bool writeable,
+                                    VkDescriptorType type)
+{
+   D3D12_CPU_DESCRIPTOR_HANDLE view_handle =
+      dzn_descriptor_heap_get_cpu_handle(heap, desc_offset);
+
+   struct dzn_null_desc desc;
+   dzn_null_desc_init(&desc, writeable, type);
+
+   switch (desc.kind) {
+   case DZN_NULL_DESC_CBV:
+      desc.cbv.BufferLocation =
+         ID3D12Resource_GetGPUVirtualAddress(device->dev_refs.buf) +
+         DZN_DEVICE_REFS_ALL_ZEROS_OFFSET;
+      ID3D12Device1_CreateConstantBufferView(device->dev, &desc.cbv, view_handle);
+      break;
+   case DZN_NULL_DESC_SRV:
+      ID3D12Device1_CreateShaderResourceView(device->dev, NULL, &desc.srv, view_handle);
+      break;
+   case DZN_NULL_DESC_UAV:
+      ID3D12Device1_CreateUnorderedAccessView(device->dev, NULL, NULL, &desc.uav, view_handle);
+      break;
+   }
+}
+
 static void
 dzn_bindless_descriptor_set_write_sampler_desc(volatile struct dxil_spirv_bindless_entry *map,
                                                uint32_t desc_offset,
@@ -1663,6 +1693,84 @@ dzn_descriptor_set_ptr_write_buffer_desc(struct dzn_device *device,
    dzn_descriptor_set_write_buffer_desc(device, desc_type, set, heap_offset, alt_heap_offset, bdesc);
 }
 
+static void
+dzn_descriptor_set_write_null_desc(struct dzn_device *device,
+                                   VkDescriptorType desc_type,
+                                   struct dzn_descriptor_set *set,
+                                   uint32_t heap_offset,
+                                   uint32_t alt_heap_offset)
+{
+   D3D12_DESCRIPTOR_HEAP_TYPE type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+
+   if (heap_offset == ~0)
+      return;
+
+   if (device->bindless) {
+      volatile struct dxil_spirv_bindless_entry *entry =
+         &set->pool->bindless.map[set->heap_offsets[0] + heap_offset];
+      if (desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+          desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+         entry->buffer_idx = 0;
+         entry->buffer_offset = 0;
+      } else {
+         entry->texture_idx = 0;
+      }
+      return;
+   }
+
+   bool writable = desc_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+                   desc_type == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER ||
+                   desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+
+   dzn_descriptor_heap_write_null_desc(device, &set->pool->heaps[type],
+                                       set->heap_offsets[type] + heap_offset,
+                                       writable, desc_type);
+
+   if (alt_heap_offset != ~0) {
+      dzn_descriptor_heap_write_null_desc(device, &set->pool->heaps[type],
+                                          set->heap_offsets[type] + alt_heap_offset,
+                                          false, desc_type);
+   }
+}
+
+static void
+dzn_descriptor_set_ptr_write_null_desc(struct dzn_device *device,
+                                       VkDescriptorType desc_type,
+                                       struct dzn_descriptor_set *set,
+                                       const struct dzn_descriptor_set_ptr *ptr)
+{
+   D3D12_DESCRIPTOR_HEAP_TYPE type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+   uint32_t heap_offset =
+      dzn_descriptor_set_ptr_get_heap_offset(set->layout, type, ptr, false, device->bindless);
+   uint32_t alt_heap_offset =
+      dzn_descriptor_set_ptr_get_heap_offset(set->layout, type, ptr, true, device->bindless);
+
+   dzn_descriptor_set_write_null_desc(device, desc_type, set, heap_offset, alt_heap_offset);
+}
+
+static void
+dzn_descriptor_set_write_null_dynamic_buffer_desc(struct dzn_descriptor_set *set,
+                                                  uint32_t dynamic_buffer_idx,
+                                                  VkDescriptorType type)
+{
+   if (dynamic_buffer_idx == ~0)
+      return;
+
+   assert(dynamic_buffer_idx < set->layout->dynamic_buffers.count);
+   set->dynamic_buffers[dynamic_buffer_idx] = (struct dzn_buffer_desc){ .type = type };
+}
+
+static void
+dzn_descriptor_set_ptr_write_null_dynamic_buffer_desc(struct dzn_descriptor_set *set,
+                                                      const struct dzn_descriptor_set_ptr *ptr,
+                                                      VkDescriptorType type)
+{
+   uint32_t dynamic_buffer_idx =
+      dzn_descriptor_set_ptr_get_buffer_idx(set->layout, ptr);
+
+   dzn_descriptor_set_write_null_dynamic_buffer_desc(set, dynamic_buffer_idx, type);
+}
+
 static VkResult
 dzn_descriptor_set_init(struct dzn_descriptor_set *set,
                         struct dzn_device *device,
@@ -2156,6 +2264,8 @@ dzn_descriptor_set_write(struct dzn_device *device,
          if (iview)
             dzn_descriptor_set_ptr_write_image_view_desc(device, pDescriptorWrite->descriptorType,
                                                          set, &ptr, cube_as_2darray, iview);
+         else
+            dzn_descriptor_set_ptr_write_null_desc(device, pDescriptorWrite->descriptorType, set, &ptr);
 
          d++;
       }
@@ -2173,6 +2283,8 @@ dzn_descriptor_set_write(struct dzn_device *device,
          if (iview)
             dzn_descriptor_set_ptr_write_image_view_desc(device, pDescriptorWrite->descriptorType,
                                                          set, &ptr, cube_as_2darray, iview);
+         else
+            dzn_descriptor_set_ptr_write_null_desc(device, pDescriptorWrite->descriptorType, set, &ptr);
 
          d++;
       }
@@ -2191,6 +2303,8 @@ dzn_descriptor_set_write(struct dzn_device *device,
 
          if (desc.buffer)
             dzn_descriptor_set_ptr_write_buffer_desc(device, pDescriptorWrite->descriptorType, set, &ptr, &desc);
+         else
+            dzn_descriptor_set_ptr_write_null_desc(device, pDescriptorWrite->descriptorType, set, &ptr);
 
          d++;
       }
@@ -2210,6 +2324,8 @@ dzn_descriptor_set_write(struct dzn_device *device,
 
          if (desc.buffer)
             dzn_descriptor_set_ptr_write_dynamic_buffer_desc(device, set, &ptr, &desc);
+         else
+            dzn_descriptor_set_ptr_write_null_dynamic_buffer_desc(set, &ptr, pDescriptorWrite->descriptorType);
 
          d++;
       }
@@ -2225,6 +2341,8 @@ dzn_descriptor_set_write(struct dzn_device *device,
          if (bview)
             dzn_descriptor_set_ptr_write_buffer_view_desc(device, pDescriptorWrite->descriptorType,
                                                           set, &ptr, bview);
+         else
+            dzn_descriptor_set_ptr_write_null_desc(device, pDescriptorWrite->descriptorType, set, &ptr);
 
          d++;
       }
@@ -2535,6 +2653,9 @@ dzn_UpdateDescriptorSetWithTemplate(VkDevice _device,
                dzn_descriptor_set_write_image_view_desc(device, entry->type, set,
                                                         entry->heap_offsets.cbv_srv_uav + d, ~0,
                                                         cube_as_2darray, iview);
+            else
+               dzn_descriptor_set_write_null_desc(device, entry->type, set,
+                                                  entry->heap_offsets.cbv_srv_uav + d, ~0);
          }
          break;
 
@@ -2554,6 +2675,9 @@ dzn_UpdateDescriptorSetWithTemplate(VkDevice _device,
                dzn_descriptor_set_write_image_view_desc(device, entry->type, set,
                                                         heap_offset, alt_heap_offset,
                                                         cube_as_2darray, iview);
+            else
+               dzn_descriptor_set_write_null_desc(device, entry->type, set,
+                                                  heap_offset, alt_heap_offset);
          }
          break;
       case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
@@ -2575,6 +2699,9 @@ dzn_UpdateDescriptorSetWithTemplate(VkDevice _device,
             if (desc.buffer)
                dzn_descriptor_set_write_buffer_desc(device, entry->type, set, heap_offset,
                                                     alt_heap_offset, &desc);
+            else
+               dzn_descriptor_set_write_null_desc(device, entry->type, set,
+                                                  heap_offset, alt_heap_offset);
          }
          break;
 
@@ -2593,6 +2720,8 @@ dzn_UpdateDescriptorSetWithTemplate(VkDevice _device,
 
             if (desc.buffer)
                dzn_descriptor_set_write_dynamic_buffer_desc(device, set, dyn_buf_idx, &desc);
+            else
+               dzn_descriptor_set_write_null_dynamic_buffer_desc(set, dyn_buf_idx, entry->type);
          }
          break;
 
@@ -2609,6 +2738,9 @@ dzn_UpdateDescriptorSetWithTemplate(VkDevice _device,
 
             if (bview)
                dzn_descriptor_set_write_buffer_view_desc(device, entry->type, set, heap_offset, alt_heap_offset, bview);
+            else
+               dzn_descriptor_set_write_null_desc(device, entry->type, set,
+                                                  heap_offset, alt_heap_offset);
          }
          break;
 

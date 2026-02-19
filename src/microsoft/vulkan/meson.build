@@ -17,6 +17,7 @@ libdzn_files = files(
   'dzn_cmd_buffer.c',
   'dzn_descriptor_set.c',
   'dzn_device.c',
+  'dzn_null_desc.c',
   'dzn_dxcore.cpp',
   'dzn_image.c',
   'dzn_meta.c',
@@ -120,3 +121,16 @@ _dev_icd = custom_target(
 )
 
 devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
+
+if with_tests
+  test(
+    'dzn_descriptor',
+    executable(
+      'dzn_descriptor_test',
+      files('dzn_descriptor_test.c', 'dzn_null_desc.c'),
+      include_directories : [inc_include, inc_src],
+      dependencies : [idep_vulkan_util, dep_dxheaders],
+    ),
+    suite: 'dzn'
+  )
+endif
