@@ -1523,7 +1523,6 @@ struct anv_physical_device {
     /* true if FCV optimization should be disabled. */
     bool                                        disable_fcv;
     /**/
-    bool                                        uses_ex_bso;
 
     bool                                        always_flush_cache;
 
@@ -1735,7 +1734,7 @@ anv_physical_device_bindless_heap_size(const struct anv_physical_device *device,
     * but we have some workarounds that require 2 heaps to overlap, so the
     * size is dictated by our VA allocation.
     */
-   return device->uses_ex_bso ?
+   return intel_has_extended_bindless(&device->info) ?
       (descriptor_buffer ?
        device->va.dynamic_visible_pool.size :
        device->va.bindless_surface_state_pool.size) :
@@ -2841,7 +2840,7 @@ anv_surface_state_to_handle(struct anv_physical_device *device,
     */
    assert(state.offset >= 0);
    uint32_t offset = state.offset;
-   if (device->uses_ex_bso) {
+   if (intel_has_extended_bindless(&device->info)) {
       assert(util_is_aligned(offset, 64));
       return offset;
    } else {
@@ -5836,12 +5835,8 @@ anv_image_is_externally_shared(const struct anv_image *image)
 static inline bool
 anv_image_has_private_binding(const struct anv_image *image)
 {
-   if (image->bindings[ANV_IMAGE_MEMORY_BINDING_PRIVATE].memory_range.size > 0) {
-      assert(anv_image_is_externally_shared(image));
-      return true;
-   } else {
-      return false;
-   }
+   enum anv_image_memory_binding binding = ANV_IMAGE_MEMORY_BINDING_PRIVATE;
+   return image->bindings[binding].memory_range.size > 0;
 }
 
 /* The ordering of this enum is important */
@@ -6510,15 +6505,6 @@ anv_isl_usage_for_descriptor_type(const VkDescriptorType type)
          return ISL_SURF_USAGE_STORAGE_BIT;
    }
 }
-
-VkFormatFeatureFlags2
-anv_get_image_format_features2(const struct anv_physical_device *physical_device,
-                               VkFormat vk_format,
-                               const struct anv_format *anv_format,
-                               VkImageTiling vk_tiling,
-                               VkImageUsageFlags usage,
-                               VkImageCreateFlags create_flags,
-                               const struct isl_drm_modifier_info *isl_mod_info);
 
 void anv_fill_buffer_surface_state(struct anv_device *device,
                                    void *surface_state_ptr,

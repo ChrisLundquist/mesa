@@ -1145,7 +1145,6 @@ a740_raw_magic_regs = [
 
         [A6XXRegs.REG_A7XX_RB_UNKNOWN_8E79,   0x00000000],
         [A6XXRegs.REG_A7XX_RB_LRZ_CNTL2,      0x00000000],
-        [A6XXRegs.REG_A7XX_RB_UNKNOWN_8C34,   0x00000000],
         [A6XXRegs.REG_A7XX_RB_CCU_DBG_ECO_CNTL, 0x02080000],
         [A6XXRegs.REG_A6XX_VPC_DBG_ECO_CNTL,  0x02000000],
         [A6XXRegs.REG_A6XX_UCHE_UNKNOWN_0E12, 0],
@@ -1251,7 +1250,6 @@ add_gpus([
 
             [A6XXRegs.REG_A7XX_RB_UNKNOWN_8E79,   0x00000000],
             [A6XXRegs.REG_A7XX_RB_LRZ_CNTL2,      0x00000000],
-            [A6XXRegs.REG_A7XX_RB_UNKNOWN_8C34,   0x00000000],
             [A6XXRegs.REG_A7XX_RB_CCU_DBG_ECO_CNTL, 0x02080000],
             [A6XXRegs.REG_A6XX_VPC_DBG_ECO_CNTL,  0x02000000],
             [A6XXRegs.REG_A6XX_UCHE_UNKNOWN_0E12, 0],
@@ -1422,10 +1420,8 @@ add_gpus([
             [A6XXRegs.REG_A6XX_GRAS_DBG_ECO_CNTL,  0x00004800],
 
             [A6XXRegs.REG_A7XX_RB_LRZ_CNTL2,      0x00000000],
-            [A6XXRegs.REG_A7XX_RB_UNKNOWN_8C34,   0x00000000],
             [A6XXRegs.REG_A7XX_RB_CCU_DBG_ECO_CNTL, 0x02082000],
 
-            [A6XXRegs.REG_A7XX_VPC_UNKNOWN_930A, 0],
             [A6XXRegs.REG_A7XX_VPC_FLATSHADE_MODE_CNTL, 1],
 
             [A6XXRegs.REG_A7XX_SP_PS_OUTPUT_CONST_CNTL, 0],
@@ -1444,54 +1440,10 @@ a8xx_base = GPUProps(
         has_dual_wave_dispatch = True,
     )
 
-a8xx_gen2 = GPUProps(
-        reg_size_vec4 = 128,
-        sysmem_vpc_attr_buf_size = 131072,
-        sysmem_vpc_pos_buf_size = 65536,
-        sysmem_vpc_bv_pos_buf_size = 32768,
-        sysmem_ccu_color_cache_fraction = CCUColorCacheFraction.FULL.value,
-        sysmem_per_ccu_color_cache_size = 128 * 1024,
-        sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.THREE_QUARTER.value,
-        sysmem_per_ccu_depth_cache_size = 192 * 1024,
-        gmem_vpc_attr_buf_size = 49152,
-        gmem_vpc_pos_buf_size = 24576,
-        gmem_vpc_bv_pos_buf_size = 32768,
-        gmem_ccu_color_cache_fraction = CCUColorCacheFraction.EIGHTH.value,
-        gmem_per_ccu_color_cache_size = 16 * 1024,
-        gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.FULL.value,
-        gmem_per_ccu_depth_cache_size = 256 * 1024,
-        has_fs_tex_prefetch = False,
-
-        # tbd if this applies to a8xx_gen1 as well:
-        has_salu_int_narrowing_quirk = True
-)
-
-# Totally fake, just to get cffdump to work:
-add_gpus([
-        GPUId(chip_id=0x44050000, name="FD830"),
-    ], A6xxGPUInfo(
-        CHIP.A8XX,
-        [a7xx_base, a7xx_gen3, a8xx_base],
-        num_ccu = 6,
-        num_slices = 3,
-        tile_align_w = 64,
-        tile_align_h = 32,
-        tile_max_w = 16384,
-        tile_max_h = 16384,
-        num_vsc_pipes = 32,
-        cs_shared_mem_size = 32 * 1024,
-        wave_granularity = 2,
-        fibers_per_sp = 128 * 2 * 16,
-        magic_regs = dict(
-        ),
-        raw_magic_regs = [
-        ],
-    ))
-
 # For a8xx, the chicken bit and most other non-ctx reg
 # programming moves into the kernel, and what remains
 # should be easier to share between devices
-a8xx_gen2_raw_magic_regs = [
+a8xx_base_raw_magic_regs = [
         [A6XXRegs.REG_A8XX_GRAS_BIN_FOVEAT_XY_FDM_OFFSET + 0, 0x00000000],
         [A6XXRegs.REG_A8XX_GRAS_BIN_FOVEAT_XY_FDM_OFFSET + 1, 0x00000000],
         [A6XXRegs.REG_A8XX_GRAS_BIN_FOVEAT_XY_FDM_OFFSET + 2, 0x00000000],
@@ -1516,11 +1468,70 @@ a8xx_gen2_raw_magic_regs = [
         [A6XXRegs.REG_A6XX_TPL1_PS_ROTATION_CNTL, 0x00000004],
         [A6XXRegs.REG_A6XX_TPL1_PS_SWIZZLE_CNTL, 0x00000000],
 
-        [A6XXRegs.REG_A8XX_VPC_UNKNOWN_9313,  0x00000000],
-
         [A6XXRegs.REG_A8XX_PC_UNKNOWN_980B, 0x00800280],
         [A6XXRegs.REG_A8XX_PC_MODE_CNTL,    0x00003f00],
     ]
+
+a8xx_gen1 = GPUProps(
+        reg_size_vec4 = 128,
+        sysmem_vpc_attr_buf_size = 131072,
+        sysmem_vpc_pos_buf_size = 65536,
+        sysmem_vpc_bv_pos_buf_size = 32768,
+        sysmem_ccu_color_cache_fraction = CCUColorCacheFraction.FULL.value,
+        sysmem_per_ccu_color_cache_size = 128 * 1024,
+        sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.FULL.value,
+        sysmem_per_ccu_depth_cache_size = 256 * 1024,
+        gmem_vpc_attr_buf_size = 49152,
+        gmem_vpc_pos_buf_size = 24576,
+        gmem_vpc_bv_pos_buf_size = 32768,
+        gmem_ccu_color_cache_fraction = CCUColorCacheFraction.EIGHTH.value,
+        gmem_per_ccu_color_cache_size = 16 * 1024,
+        gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.FULL.value,
+        gmem_per_ccu_depth_cache_size = 256 * 1024,
+
+        has_salu_int_narrowing_quirk = True
+)
+
+a8xx_gen2 = GPUProps(
+        reg_size_vec4 = 128,
+        sysmem_vpc_attr_buf_size = 131072,
+        sysmem_vpc_pos_buf_size = 65536,
+        sysmem_vpc_bv_pos_buf_size = 32768,
+        sysmem_ccu_color_cache_fraction = CCUColorCacheFraction.FULL.value,
+        sysmem_per_ccu_color_cache_size = 128 * 1024,
+        sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.THREE_QUARTER.value,
+        sysmem_per_ccu_depth_cache_size = 192 * 1024,
+        gmem_vpc_attr_buf_size = 49152,
+        gmem_vpc_pos_buf_size = 24576,
+        gmem_vpc_bv_pos_buf_size = 32768,
+        gmem_ccu_color_cache_fraction = CCUColorCacheFraction.EIGHTH.value,
+        gmem_per_ccu_color_cache_size = 16 * 1024,
+        gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.FULL.value,
+        gmem_per_ccu_depth_cache_size = 256 * 1024,
+        has_fs_tex_prefetch = False,
+
+        has_salu_int_narrowing_quirk = True
+)
+
+add_gpus([
+        GPUId(chip_id=0x44050000, name="FD830"),
+        GPUId(chip_id=0x44050001, name="FD830"), # KGSL
+    ], A6xxGPUInfo(
+        CHIP.A8XX,
+        [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen1],
+        num_ccu = 6,
+        num_slices = 3,
+        tile_align_w = 96,
+        tile_align_h = 32,
+        tile_max_w = 16416,
+        tile_max_h = 16384,
+        num_vsc_pipes = 32,
+        cs_shared_mem_size = 32 * 1024,
+        wave_granularity = 2,
+        fibers_per_sp = 128 * 2 * 16,
+        magic_regs = dict(),
+        raw_magic_regs = a8xx_base_raw_magic_regs,
+    ))
 
 add_gpus([
         GPUId(chip_id=0xffff44050A31, name="Adreno (TM) 840"),
@@ -1539,7 +1550,7 @@ add_gpus([
         wave_granularity = 2,
         fibers_per_sp = 128 * 2 * 16,
         magic_regs = dict(),
-        raw_magic_regs = a8xx_gen2_raw_magic_regs,
+        raw_magic_regs = a8xx_base_raw_magic_regs,
     ))
 
 add_gpus([
@@ -1558,7 +1569,7 @@ add_gpus([
         wave_granularity = 2,
         fibers_per_sp = 128 * 2 * 16,
         magic_regs = dict(),
-        raw_magic_regs = a8xx_gen2_raw_magic_regs,
+        raw_magic_regs = a8xx_base_raw_magic_regs,
     ))
 
 template = """\

@@ -324,10 +324,6 @@ bool brw_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
 
 void brw_nir_optimize(struct brw_pass_tracker *pt);
 
-nir_shader *brw_nir_create_passthrough_tcs(void *mem_ctx,
-                                           const struct brw_compiler *compiler,
-                                           const struct brw_tcs_prog_key *key);
-
 #define BRW_NIR_FRAG_OUTPUT_INDEX_SHIFT 0
 #define BRW_NIR_FRAG_OUTPUT_INDEX_MASK INTEL_MASK(0, 0)
 #define BRW_NIR_FRAG_OUTPUT_LOCATION_SHIFT 1
@@ -347,8 +343,7 @@ const struct glsl_type *brw_nir_get_var_type(const struct nir_shader *nir,
                                              nir_variable *var);
 
 static inline nir_variable_mode
-brw_nir_no_indirect_mask(const struct brw_compiler *compiler,
-                         mesa_shader_stage stage)
+brw_nir_no_indirect_mask(mesa_shader_stage stage)
 {
    nir_variable_mode indirect_mask = (nir_variable_mode) 0;
 

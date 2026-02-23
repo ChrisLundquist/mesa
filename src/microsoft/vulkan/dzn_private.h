@@ -294,13 +294,16 @@ struct dzn_device {
    struct dzn_meta_triangle_fan_rewrite_index triangle_fan[DZN_NUM_INDEX_TYPE];
    struct dzn_meta_blits blits;
 
+   /* Pre-filled reference buffer: all-ones section + all-zeros section.
+    * Used by query resets and as backing memory for null CBV descriptors.
+    * Each section must be >= D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT (256). */
    struct {
-#define DZN_QUERY_REFS_SECTION_SIZE 4096
-#define DZN_QUERY_REFS_ALL_ONES_OFFSET 0
-#define DZN_QUERY_REFS_ALL_ZEROS_OFFSET (DZN_QUERY_REFS_ALL_ONES_OFFSET + DZN_QUERY_REFS_SECTION_SIZE)
-#define DZN_QUERY_REFS_RES_SIZE (DZN_QUERY_REFS_ALL_ZEROS_OFFSET + DZN_QUERY_REFS_SECTION_SIZE)
-      ID3D12Resource *refs;
-   } queries;
+#define DZN_DEVICE_REFS_SECTION_SIZE 4096
+#define DZN_DEVICE_REFS_ALL_ONES_OFFSET 0
+#define DZN_DEVICE_REFS_ALL_ZEROS_OFFSET (DZN_DEVICE_REFS_ALL_ONES_OFFSET + DZN_DEVICE_REFS_SECTION_SIZE)
+#define DZN_DEVICE_REFS_RES_SIZE (DZN_DEVICE_REFS_ALL_ZEROS_OFFSET + DZN_DEVICE_REFS_SECTION_SIZE)
+      ID3D12Resource *buf;
+   } dev_refs;
 
    /* Will be the app's graphics queue if there's exactly one, otherwise this will be 
     * a dedicated graphics queue to host swapchain blits.
@@ -473,6 +476,13 @@ dzn_descriptor_heap_write_buffer_desc(struct dzn_device *device,
                                       uint32_t heap_offset,
                                       bool writeable,
                                       const struct dzn_buffer_desc *bdesc);
+
+void
+dzn_descriptor_heap_write_null_desc(struct dzn_device *device,
+                                    struct dzn_descriptor_heap *heap,
+                                    uint32_t desc_offset,
+                                    bool writeable,
+                                    VkDescriptorType type);
 
 void
 dzn_descriptor_heap_write_sampler_desc(struct dzn_device *device,

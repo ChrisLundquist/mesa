@@ -6406,6 +6406,7 @@ bifrost_postprocess_nir(nir_shader *nir, unsigned gpu_id)
 
    NIR_PASS(_, nir, nir_lower_alu_width, bi_vectorize_filter, &gpu_id);
    NIR_PASS(_, nir, nir_lower_load_const_to_scalar);
+   NIR_PASS(_, nir, nir_lower_phis_to_scalar, bi_vectorize_filter, &gpu_id);
    NIR_PASS(_, nir, nir_lower_flrp, 16 | 32 | 64, false /* always_precise */);
    NIR_PASS(_, nir, nir_lower_var_copies);
    NIR_PASS(_, nir, nir_lower_alu);
@@ -6867,6 +6868,9 @@ bi_compile_variant_nir(nir_shader *nir,
       stats->isa = PAN_STAT_BIFROST;
       bi_gather_stats(ctx, binary->size - offset, &stats->bifrost);
    }
+
+   if (ctx->arch >= 13)
+      va_gather_hsr_info(ctx, pinfo);
 
    /* update info struct */
    pan_shader_update_info(pinfo, ctx->nir, inputs);

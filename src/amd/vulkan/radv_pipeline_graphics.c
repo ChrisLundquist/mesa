@@ -1625,7 +1625,7 @@ radv_graphics_shaders_link_varyings(struct radv_shader_stage *stages, enum amd_g
 
       /* Scalarize all I/O, because nir_opt_varyings and nir_opt_vectorize_io expect all I/O to be scalarized. */
       nir_variable_mode sca_mode = nir_var_shader_in;
-      bool sca_progress;
+      bool sca_progress = false;
       if (s != MESA_SHADER_FRAGMENT)
          sca_mode |= nir_var_shader_out;
 
@@ -3262,14 +3262,11 @@ radv_get_vgt_shader_key(const struct radv_device *device, struct radv_shader **s
 
    key.tess = !!shaders[MESA_SHADER_TESS_CTRL];
    key.gs = !!shaders[MESA_SHADER_GEOMETRY];
+   key.mesh = !!shaders[MESA_SHADER_MESH];
    if (last_vgt_shader->info.is_ngg) {
       key.ngg = 1;
       key.ngg_passthrough = last_vgt_shader->info.is_ngg_passthrough;
-      key.ngg_streamout = !!last_vgt_shader->info.so.enabled_stream_buffers_mask;
-   }
-   if (shaders[MESA_SHADER_MESH]) {
-      key.mesh = 1;
-      key.mesh_scratch_ring = shaders[MESA_SHADER_MESH]->info.ms.needs_ms_scratch_ring;
+      key.ngg_wave_id_en = last_vgt_shader->info.ngg_wave_id_en;
    }
 
    key.hs_wave32 = hs_size == 32;

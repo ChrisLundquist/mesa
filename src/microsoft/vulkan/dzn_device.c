@@ -150,6 +150,7 @@ dzn_physical_device_get_extensions(struct dzn_physical_device *pdev)
       .EXT_external_memory_host              = pdev->dev13,
 #endif
       .EXT_scalar_block_layout               = true,
+      .EXT_robustness2                       = true,
       .EXT_separate_stencil_usage            = true,
       .EXT_shader_replicated_composites      = true,
       .EXT_shader_subgroup_ballot            = true,
@@ -193,10 +194,10 @@ static const struct debug_control dzn_debug_options[] = {
 };
 
 static void
-dzn_physical_device_destroy(struct vk_physical_device *physical)
+dzn_physical_device_release(struct dzn_physical_device *pdev)
 {
-   struct dzn_physical_device *pdev = container_of(physical, struct dzn_physical_device, vk);
-   struct dzn_instance *instance = container_of(pdev->vk.instance, struct dzn_instance, vk);
+   if (!pdev)
+      return;
 
    if (pdev->dev)
       ID3D12Device1_Release(pdev->dev);
@@ -215,7 +216,15 @@ dzn_physical_device_destroy(struct vk_physical_device *physical)
 
    if (pdev->adapter)
       IUnknown_Release(pdev->adapter);
+}
 
+static void
+dzn_physical_device_destroy(struct vk_physical_device *physical)
+{
+   struct dzn_physical_device *pdev = container_of(physical, struct dzn_physical_device, vk);
+   struct dzn_instance *instance = container_of(pdev->vk.instance, struct dzn_instance, vk);
+
+   dzn_physical_device_release(pdev);
    dzn_wsi_finish(pdev);
    vk_physical_device_finish(&pdev->vk);
    vk_free(&instance->vk.alloc, pdev);
@@ -781,7 +790,10 @@ dzn_physical_device_get_features(const struct dzn_physical_device *pdev,
       .shaderOutputLayer                  = false,
       .subgroupBroadcastDynamicId         = true,
 
-      .robustImageAccess                  = false,
+      .robustImageAccess                  = true,
+      .robustBufferAccess2                = false,
+      .robustImageAccess2                 = true,
+      .nullDescriptor                     = true,
       .inlineUniformBlock                 = false,
       .descriptorBindingInlineUniformBlockUpdateAfterBind = false,
       .pipelineCreationCacheControl       = false,
@@ -1063,6 +1075,10 @@ dzn_physical_device_get_properties(const struct dzn_physical_device *pdev,
       /* VkPhysicalDeviceExternalMemoryHostPropertiesEXT */
       .minImportedHostPointerAlignment = 65536,
 
+      /* VkPhysicalDeviceRobustness2PropertiesEXT */
+      .robustStorageBufferAccessSizeAlignment = 4,
+      .robustUniformBufferAccessSizeAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
+
       /* VkPhysicalDeviceLayeredDriverPropertiesMSFT */
       .underlyingAPI = VK_LAYERED_DRIVER_UNDERLYING_API_D3D12_MSFT,
    };
@@ -1167,7 +1183,9 @@ dzn_physical_device_create(struct vk_instance *instance,
    result = dzn_wsi_init(pdev);
    if (result != VK_SUCCESS || !pdev->dev) {
       list_del(&pdev->vk.link);
-      dzn_physical_device_destroy(&pdev->vk);
+      dzn_physical_device_release(pdev);
+      vk_physical_device_finish(&pdev->vk);
+      vk_free(&instance->alloc, pdev);
       return result;
    }
 
@@ -2150,7 +2168,7 @@ dzn_device_query_init(struct dzn_device *device)
    D3D12_RESOURCE_DESC rdesc = {
       .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
       .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
-      .Width = DZN_QUERY_REFS_RES_SIZE,
+      .Width = DZN_DEVICE_REFS_RES_SIZE,
       .Height = 1,
       .DepthOrArraySize = 1,
       .MipLevels = 1,
@@ -2166,16 +2184,16 @@ dzn_device_query_init(struct dzn_device *device)
                                                    D3D12_RESOURCE_STATE_COMMON,
                                                    NULL,
                                                    &IID_ID3D12Resource,
-                                                   (void **)&device->queries.refs)))
+                                                   (void **)&device->dev_refs.buf)))
       return vk_error(device->vk.physical, VK_ERROR_OUT_OF_DEVICE_MEMORY);
 
    uint8_t *queries_ref;
-   if (FAILED(ID3D12Resource_Map(device->queries.refs, 0, NULL, (void **)&queries_ref)))
+   if (FAILED(ID3D12Resource_Map(device->dev_refs.buf, 0, NULL, (void **)&queries_ref)))
       return vk_error(device->vk.physical, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   memset(queries_ref + DZN_QUERY_REFS_ALL_ONES_OFFSET, 0xff, DZN_QUERY_REFS_SECTION_SIZE);
-   memset(queries_ref + DZN_QUERY_REFS_ALL_ZEROS_OFFSET, 0x0, DZN_QUERY_REFS_SECTION_SIZE);
-   ID3D12Resource_Unmap(device->queries.refs, 0, NULL);
+   memset(queries_ref + DZN_DEVICE_REFS_ALL_ONES_OFFSET, 0xff, DZN_DEVICE_REFS_SECTION_SIZE);
+   memset(queries_ref + DZN_DEVICE_REFS_ALL_ZEROS_OFFSET, 0x0, DZN_DEVICE_REFS_SECTION_SIZE);
+   ID3D12Resource_Unmap(device->dev_refs.buf, 0, NULL);
 
    return VK_SUCCESS;
 }
@@ -2183,8 +2201,8 @@ dzn_device_query_init(struct dzn_device *device)
 static void
 dzn_device_query_finish(struct dzn_device *device)
 {
-   if (device->queries.refs)
-      ID3D12Resource_Release(device->queries.refs);
+   if (device->dev_refs.buf)
+      ID3D12Resource_Release(device->dev_refs.buf);
 }
 
 static void

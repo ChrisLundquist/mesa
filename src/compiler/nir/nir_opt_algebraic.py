@@ -364,13 +364,13 @@ optimizations += [
 
    # Optimize open-coded fmulz.
    # (b==0.0 ? 0.0 : a) * (a==0.0 ? 0.0 : b) -> fmulz(a, b)
-   *add_fabs_fneg((('fmul@32(nsz)', ('bcsel', ('feq(ignore_exact)', b, 0.0), 0.0, 'ma'), ('bcsel', ('feq(ignore_exact)', a, 0.0), 0.0, 'mb')),
+   *add_fabs_fneg((('fmul@32(nsz)', ('bcsel', ('feq', b, 0.0), 0.0, 'ma'), ('bcsel', ('feq', a, 0.0), 0.0, 'mb')),
     ('fmulz', 'ma', 'mb'), has_fmulz), {'ma' : a, 'mb' : b}),
    # (b!=0.0 ? a : 0.0) * (a==0.0 ? 0.0 : b) -> fmulz(a, b)
-   *add_fabs_fneg((('fmul@32(nsz)', ('bcsel', ('fneu(ignore_exact)', b, 0.0), 'ma', 0.0), ('bcsel', ('feq(ignore_exact)', a, 0.0), 0.0, 'mb')),
+   *add_fabs_fneg((('fmul@32(nsz)', ('bcsel', ('fneu', b, 0.0), 'ma', 0.0), ('bcsel', ('feq', a, 0.0), 0.0, 'mb')),
     ('fmulz', 'ma', 'mb'), has_fmulz), {'ma' : a, 'mb' : b}),
    # (b!=0.0 ? a : 0.0) * (a!=0.0 ? b : 0.0) -> fmulz(a, b)
-   *add_fabs_fneg((('fmul@32(nsz)', ('bcsel', ('fneu(ignore_exact)', b, 0.0), 'ma', 0.0), ('bcsel', ('fneu(ignore_exact)', a, 0.0), 'mb', 0.0)),
+   *add_fabs_fneg((('fmul@32(nsz)', ('bcsel', ('fneu', b, 0.0), 'ma', 0.0), ('bcsel', ('fneu', a, 0.0), 'mb', 0.0)),
     ('fmulz', 'ma', 'mb'), has_fmulz), {'ma' : a, 'mb' : b}),
 
    # (min(abs(a), abs(b)) == 0.0 ? 0.0 : a * b) -> fmulz(a,b)
@@ -378,20 +378,20 @@ optimizations += [
     ('fmulz', 'ma', 'mb'), has_fmulz), {'ma': a, 'mb': b}),
 
    # a * (a == 0.0 ? 0.0 : b(is_non_const_zero))
-   *add_fabs_fneg((('fmul@32(nsz)', 'ma', ('bcsel', ('feq(ignore_exact)', a, 0.0), 0.0, '#b(is_not_const_zero)')),
+   *add_fabs_fneg((('fmul@32(nsz)', 'ma', ('bcsel', ('feq', a, 0.0), 0.0, '#b(is_not_const_zero)')),
     ('fmulz', 'ma', b), has_fmulz), {'ma' : a}),
 
    # ffma(b==0.0 ? 0.0 : a, a==0.0 ? 0.0 : b, c) -> ffmaz(a, b, c)
-   *add_fabs_fneg((('ffma@32(nsz)', ('bcsel', ('feq(ignore_exact)', b, 0.0), 0.0, 'ma'), ('bcsel', ('feq(ignore_exact)', a, 0.0), 0.0, 'mb'), c),
+   *add_fabs_fneg((('ffma@32(nsz)', ('bcsel', ('feq', b, 0.0), 0.0, 'ma'), ('bcsel', ('feq', a, 0.0), 0.0, 'mb'), c),
     ('ffmaz', 'ma', 'mb', c), has_fmulz), {'ma' : a, 'mb' : b}),
-   *add_fabs_fneg((('ffma@32(nsz)', 'ma', ('bcsel', ('feq(ignore_exact)', a, 0.0), 0.0, '#b(is_not_const_zero)'), c),
+   *add_fabs_fneg((('ffma@32(nsz)', 'ma', ('bcsel', ('feq', a, 0.0), 0.0, '#b(is_not_const_zero)'), c),
     ('ffmaz', 'ma', b, c), has_fmulz), {'ma' : a}),
 
    # b == 0.0 ? 1.0 : fexp2(fmul(a, b)) -> fexp2(fmulz(a, b))
-   *add_fabs_fneg((('bcsel(nsz,nnan,ninf)', ('feq(ignore_exact)', b, 0.0), 1.0, ('fexp2', ('fmul@32', a, 'mb'))),
+   *add_fabs_fneg((('bcsel(nsz,nnan,ninf)', ('feq', b, 0.0), 1.0, ('fexp2', ('fmul@32', a, 'mb'))),
     ('fexp2', ('fmulz', a, 'mb')),
     has_fmulz), {'mb': b}),
-   *add_fabs_fneg((('bcsel', ('feq(ignore_exact)', b, 0.0), 1.0, ('fexp2', ('fmulz', a, 'mb'))),
+   *add_fabs_fneg((('bcsel', ('feq', b, 0.0), 1.0, ('fexp2', ('fmulz', a, 'mb'))),
     ('fexp2', ('fmulz', a, 'mb'))), {'mb': b}),
 ]
 
@@ -787,10 +787,10 @@ optimizations.extend([
 
    (('bcsel(is_only_used_as_float)', ('feq', a, 'b(is_not_zero)'), b, a), a),
    (('bcsel(is_only_used_as_float)', ('fneu', a, 'b(is_not_zero)'), a, b), a),
-   (('bcsel', ('feq(ignore_exact)', a, 0), 0, ('fsat', ('fmul', a, 'b(is_a_number)'))), ('fsat(preserve_sz)', ('fmul', a, b))),
-   (('bcsel', ('fneu(ignore_exact)', a, 0), ('fsat', ('fmul', a, 'b(is_a_number)')), 0), ('fsat(preserve_sz)', ('fmul', a, b))),
-   (('bcsel', ('feq(ignore_exact)', a, 0), b, ('fadd', a, 'b(is_not_zero)')), ('fadd', a, b)),
-   (('bcsel', ('fneu(ignore_exact)', a, 0), ('fadd', a, 'b(is_not_zero)'), b), ('fadd', a, b)),
+   (('bcsel', ('feq', a, 0), 0, ('fsat', ('fmul', a, 'b(is_a_number)'))), ('fsat(preserve_sz)', ('fmul', a, b))),
+   (('bcsel', ('fneu', a, 0), ('fsat', ('fmul', a, 'b(is_a_number)')), 0), ('fsat(preserve_sz)', ('fmul', a, b))),
+   (('bcsel', ('feq', a, 0), b, ('fadd', a, 'b(is_not_zero)')), ('fadd', a, b)),
+   (('bcsel', ('fneu', a, 0), ('fadd', a, 'b(is_not_zero)'), b), ('fadd', a, b)),
 
    # 0.0 >= b2f(a)
    # b2f(a) <= 0.0
@@ -1260,8 +1260,8 @@ for S in [1, 8, 16, 32]:
             (('u2u{}'.format(S), ('u2u{}'.format(B), 'a@{}'.format(S))), a),
         ])
 
-        if B < 16:
-            continue
+for S in [1, 8, 16, 32]:
+    for B in [16, 32, 64]:
         for C in [8, 16, 32, 64]:
             if C <= S:
                 continue
@@ -1643,6 +1643,7 @@ optimizations.extend([
    (('ior', ('b2i', 'a@1'), ('b2i', 'b@1')), ('b2i', ('ior', a, b))),
    (('fmul', ('b2f', 'a@1'), ('b2f', 'b@1')), ('b2f', ('iand', a, b))),
    (('ffma', ('b2f', 'a@1'), ('b2f', 'b@1'), c), ('fadd', ('b2f', ('iand', a, b)), c)),
+   (('fadd', 1.0, ('fneg', ('b2f', a))), ('b2f', ('inot', a))),
    (('fmul', ('b2f', ('fneu', a, 0)), a), ('fmul', 1.0, a)),
    (('ffma', ('b2f', ('fneu', a, 0)), a, b), ('fadd', a, b)),
    (('fsat', ('fadd', ('b2f', 'a@1'), ('b2f', 'b@1'))), ('b2f', ('ior', a, b))),
@@ -1872,19 +1873,6 @@ optimizations.extend([
    (('bcsel', True, b, c), b),
    (('bcsel', False, b, c), c),
 
-   (('bcsel@16', a, 1.0, 0.0), ('b2f', a)),
-   (('bcsel@16', a, 0.0, 1.0), ('b2f', ('inot', a))),
-   (('bcsel@16', a, -1.0, -0.0), ('fneg', ('b2f', a))),
-   (('bcsel@16', a, -0.0, -1.0), ('fneg', ('b2f', ('inot', a)))),
-   (('bcsel@32', a, 1.0, 0.0), ('b2f', a)),
-   (('bcsel@32', a, 0.0, 1.0), ('b2f', ('inot', a))),
-   (('bcsel@32', a, -1.0, -0.0), ('fneg', ('b2f', a))),
-   (('bcsel@32', a, -0.0, -1.0), ('fneg', ('b2f', ('inot', a)))),
-   (('bcsel@64', a, 1.0, 0.0), ('b2f', a), '!(options->lower_doubles_options & nir_lower_fp64_full_software)'),
-   (('bcsel@64', a, 0.0, 1.0), ('b2f', ('inot', a)), '!(options->lower_doubles_options & nir_lower_fp64_full_software)'),
-   (('bcsel@64', a, -1.0, -0.0), ('fneg', ('b2f', a)), '!(options->lower_doubles_options & nir_lower_fp64_full_software)'),
-   (('bcsel@64', a, -0.0, -1.0), ('fneg', ('b2f', ('inot', a))), '!(options->lower_doubles_options & nir_lower_fp64_full_software)'),
-
    (('bcsel', a, b, b), b),
    (('fcsel', a, b, b), ('fcanonicalize', b)),
 
@@ -2001,7 +1989,7 @@ optimizations.extend([
    # (0 >= +, - >= +) == (is_not_positive >= gt_zero) -> false
    # (- >= +, - >= 0) == (lt_zero >= is_not_negative) -> false
    #
-   # The flt / ilt cases just invert the expected result.
+   # The flt cases just invert the expected result.
    #
    # The results expecting true, must be marked imprecise.  The results
    # expecting false are fine because NaN compared >= or < anything is false.
@@ -2014,20 +2002,23 @@ optimizations.extend([
    (('flt', 'a(is_a_number_not_positive)', 'b(is_a_number_gt_zero)'),      True),
    (('flt', 'a(is_a_number_lt_zero)',      'b(is_a_number_not_negative)'), True),
 
-   (('ine', 'a(is_not_zero)', 0), True),
-   (('ieq', 'a(is_not_zero)', 0), False),
-
-   (('ige', 'a(is_not_negative)', 'b(is_not_positive)'), True),
-   (('ige', 'a(is_not_positive)', 'b(is_gt_zero)'),      False),
-   (('ige', 'a(is_lt_zero)',      'b(is_not_negative)'), False),
-
-   (('ilt', 'a(is_not_negative)', 'b(is_not_positive)'), False),
-   (('ilt', 'a(is_not_positive)', 'b(is_gt_zero)'),      True),
-   (('ilt', 'a(is_lt_zero)',      'b(is_not_negative)'), True),
-
-   (('ult', 0, 'a(is_gt_zero)'), True),
    (('ult', a, 0), False),
 ])
+
+for bits in [16, 32, 64]:
+    cond = '!(options->lower_doubles_options & nir_lower_fp64_full_software)' if bits == 64 else 'true'
+    bcsel = 'bcsel@{}'.format(bits)
+    bcsel_nsz = bcsel + '(is_only_used_as_float_nsz)'
+    optimizations += [
+        ((bcsel, a, 1.0, 0.0), ('b2f(preserve_sz)', a), cond),
+        ((bcsel, a, 0.0, 1.0), ('b2f(preserve_sz)', ('inot', a)), cond),
+        ((bcsel, a, -1.0, -0.0), ('fneg(preserve_sz)', ('b2f(preserve_sz)', a)), cond),
+        ((bcsel, a, -0.0, -1.0), ('fneg(preserve_sz)', ('b2f(preserve_sz)', ('inot', a))), cond),
+        ((bcsel_nsz, a, 1.0, -0.0), ('b2f', a), cond),
+        ((bcsel_nsz, a, -0.0, 1.0), ('b2f', ('inot', a)), cond),
+        ((bcsel_nsz, a, -1.0, 0.0), ('fneg', ('b2f', a)), cond),
+        ((bcsel_nsz, a, 0.0, -1.0), ('fneg', ('b2f', ('inot', a))), cond),
+    ]
 
 # Packing and then unpacking does nothing
 for pack, bits, compbits in [('pack_64_2x32', 64, 32), ('pack_32_2x16', 32, 16)]:
